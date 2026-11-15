@@ -1,0 +1,41 @@
+name: Build win-panvk dispatcher candidate
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/win-panvk-profile]
+    paths:
+      - 'production/win-panvk.manifest.json'
+      - 'runtime-profiles/dispatcher.c'
+      - 'runtime-profiles/build_manifest.py'
+      - '.github/workflows/build-win-panvk-dispatcher.yml'
+permissions:
+  contents: read
+concurrency:
+  group: win-panvk-dispatcher-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile win-panvk manifest into embedded table
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python3 -I runtime-profiles/build_manifest.py --manifest production/win-panvk.manifest.json --output out/manifest.inc
+          NDK=$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          test -n "$NDK"
+          "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang" \
+            -std=c11 -O2 -Wall -Wextra -Werror -fPIE -pie -Wl,-z,relro,-z,now \
+            -I out runtime-profiles/dispatcher.c -o out/crosvm-profile-dispatcher
+          sha256sum out/crosvm-profile-dispatcher production/win-panvk.manifest.json out/manifest.inc > out/SHA256SUMS
+          file out/crosvm-profile-dispatcher
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dispatcher-win-panvk-${{ github.sha }}
+          path: out/
+          if-no-files-found: error
