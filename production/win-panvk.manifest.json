@@ -100,7 +100,7 @@
       "libraries": [
         {
           "path": "/data/data/cn.classfun.droidvm/files/runtimes/panvk-v1/lib/libvirglrenderer.so",
-          "sha256": "720ff3860f0f2d9a08f714e2531dc6d5275af474e64079c4ae9ff1600e38dee9"
+          "sha256": "0b0cd216a79cd4ec253de4c435e0d438ddc2468870c8ad5ae8e2cc3e582af07b"
         },
         {
           "path": "/data/data/cn.classfun.droidvm/lib/libcompat_a17.so",
@@ -146,7 +146,7 @@
       "libraries": [
         {
           "path": "/data/data/cn.classfun.droidvm/files/runtimes/panvk-v1/lib/libvirglrenderer.so",
-          "sha256": "720ff3860f0f2d9a08f714e2531dc6d5275af474e64079c4ae9ff1600e38dee9"
+          "sha256": "0b0cd216a79cd4ec253de4c435e0d438ddc2468870c8ad5ae8e2cc3e582af07b"
         },
         {
           "path": "/data/data/cn.classfun.droidvm/lib/libcompat_a17.so",
