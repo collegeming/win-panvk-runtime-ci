@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Compatibility exec boundary, not a VMM. Manifest is compiled, not caller supplied.
 #define _GNU_SOURCE
+#include <ctype.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <dirent.h>
 #include <fcntl.h>
@@ -117,6 +119,136 @@ static const char *value(int argc,char **argv,int *i,const char *key) {
 static int path_value(const char *v,const char *path) {
  size_t n=strlen(path); return !strncmp(v,path,n)&&(v[n]==0||v[n]==',');
 }
+
+// GPU identity is best-effort: the profile ABI stays fail-closed, but a missing
+// or unreadable host GPU name must not stop a reviewed VM from starting. The
+// discovered value only ever becomes one sanitized SMBIOS product-name token.
+static char *sanitize_gpu_name(const char *s) {
+ char out[64]; size_t n=0; int space=0;
+ if(!s) return NULL;
+ for(; *s; s++) {
+  unsigned char c=(unsigned char)*s;
+  if(c==' '||c=='\t'||c=='\r'||c=='\n') { space=1; continue; }
+  if(!(isalnum(c)||c=='.'||c=='_'||c=='-'||c=='('||c==')'||c=='+'||c=='/'||c==':')) continue;
+  if(space&&n&&n+1<sizeof(out)) out[n++]=' ';
+  space=0;
+  if(n+1>=sizeof(out)) break;
+  out[n++]=(char)c;
+ }
+ out[n]=0;
+ return n?strdup(out):NULL;
+}
+static char *gpu_name_from_sysfs(void) {
+ int fd=open("/sys/class/misc/mali0/device/gpuinfo",O_RDONLY|O_CLOEXEC);
+ char buf[256]; ssize_t got;
+ if(fd<0) return NULL;
+ got=read(fd,buf,sizeof(buf)-1); close(fd);
+ if(got<=0) return NULL;
+ buf[got]=0;
+ return sanitize_gpu_name(buf);
+}
+// The dispatcher runs as the DroidVM app (untrusted_app), where SELinux denies
+// generic sysfs reads. Vulkan enumeration is the app-legal source of the same
+// hardware name; it only needs the system loader and a physical-device query.
+typedef void *VkInstance;
+typedef void *VkPhysicalDevice;
+typedef struct { int32_t sType; const void *pNext; uint32_t flags; const void *pApplicationInfo;
+ uint32_t enabledLayerCount; const char *const *ppEnabledLayerNames;
+ uint32_t enabledExtensionCount; const char *const *ppEnabledExtensionNames; } VkInstanceCreateInfo;
+typedef int32_t (*VkCreateInstanceFn)(const VkInstanceCreateInfo*,const void*,VkInstance*);
+typedef void (*VkDestroyInstanceFn)(VkInstance,const void*);
+typedef int32_t (*VkEnumeratePhysicalDevicesFn)(VkInstance,uint32_t*,VkPhysicalDevice*);
+typedef void (*VkGetPhysicalDevicePropertiesFn)(VkPhysicalDevice,void*);
+static char *gpu_name_from_vulkan(void) {
+ void *lib=dlopen("libvulkan.so",RTLD_NOW|RTLD_LOCAL);
+ VkCreateInstanceFn create; VkDestroyInstanceFn destroy; VkEnumeratePhysicalDevicesFn enumerate;
+ VkGetPhysicalDevicePropertiesFn properties; VkInstance instance=NULL; char *result=NULL;
+ void *sym;
+ uint32_t count=0;
+ if(!lib) lib=dlopen("libvulkan.so.1",RTLD_NOW|RTLD_LOCAL);
+ if(!lib) return NULL;
+ sym=dlsym(lib,"vkCreateInstance"); if(!sym) { dlclose(lib); return NULL; } memcpy(&create,&sym,sizeof(create));
+ sym=dlsym(lib,"vkDestroyInstance"); if(!sym) { dlclose(lib); return NULL; } memcpy(&destroy,&sym,sizeof(destroy));
+ sym=dlsym(lib,"vkEnumeratePhysicalDevices"); if(!sym) { dlclose(lib); return NULL; } memcpy(&enumerate,&sym,sizeof(enumerate));
+ sym=dlsym(lib,"vkGetPhysicalDeviceProperties"); if(!sym) { dlclose(lib); return NULL; } memcpy(&properties,&sym,sizeof(properties));
+ {
+  VkInstanceCreateInfo ci={1,NULL,0,NULL,0,NULL,0,NULL};
+  if(create(&ci,NULL,&instance)!=0||!instance) { dlclose(lib); return NULL; }
+ }
+ if(enumerate(instance,&count,NULL)!=0||count==0) { destroy(instance,NULL); dlclose(lib); return NULL; }
+ if(count>32) count=32;
+ {
+  VkPhysicalDevice *devices=calloc(count,sizeof(*devices));
+  uint32_t i;
+  if(!devices) { destroy(instance,NULL); dlclose(lib); return NULL; }
+  if(enumerate(instance,&count,devices)!=0) { free(devices); destroy(instance,NULL); dlclose(lib); return NULL; }
+  for(i=0;i<count&&!result;i++) {
+   _Alignas(16) unsigned char props[1024];
+   const char *name; size_t n=0;
+   memset(props,0,sizeof(props));
+   properties(devices[i],props);
+   name=(const char *)(props+20); // deviceName follows apiVersion/driverVersion/vendorID/deviceID/deviceType
+   while(n<256&&name[n]) n++;
+   if(!n||n==256) continue;
+   if(strstr(name,"SwiftShader")||strstr(name,"llvmpipe")) continue;
+   result=sanitize_gpu_name(name);
+  }
+  free(devices);
+ }
+ destroy(instance,NULL);
+ dlclose(lib);
+ return result;
+}
+static char *discover_gpu_name(void) {
+ char *name=gpu_name_from_sysfs();
+ if(!name) name=gpu_name_from_vulkan();
+ return name;
+}
+// Match a key at the top level of a comma-separated key=value list.  Values may
+// contain bracketed comma lists (oem-strings), so a plain strstr is not enough.
+static int smbios_has_key(const char *value,const char *key) {
+ size_t klen=strlen(key); int depth=0; const char *p=value;
+ while(*p) {
+  const char *start; size_t n;
+  while(*p==','&&!depth) p++;
+  start=p;
+  while(*p&&!(*p==','&&!depth)) {
+   if(*p=='[') depth++;
+   else if(*p==']'&&depth>0) depth--;
+   p++;
+  }
+  n=(size_t)(p-start);
+  if(n>=klen&&!strncmp(start,key,klen)) return 1;
+  if(*p==',') p++;
+ }
+ return 0;
+}
+// manufacturer=DroidVM is the KMD's trust marker, not a GPU name: the KMD only
+// publishes identity when SystemManufacturer is exactly DroidVM and the
+// product-name is a real, non-default value.  Both keys are added independently
+// and an existing caller-supplied value is never overwritten.
+static char *smbios_with_product(const char *value,const char *product) {
+ int add_mfr,add_prod; size_t n,p,o,need; char *out;
+ if(!product||!*product) return (char *)value;
+ add_mfr=!smbios_has_key(value,"manufacturer=");
+ add_prod=!smbios_has_key(value,"product-name=");
+ if(!add_mfr&&!add_prod) return (char *)value;
+ n=strlen(value); p=strlen(product);
+ need=(add_mfr?20:0)+(add_prod?13+p:0)+3;
+ out=malloc(n+need+1); if(!out) fail("allocation");
+ memcpy(out,value,n); o=n;
+ if(o&&out[o-1]!=',') out[o++]=',';
+ if(add_mfr) {
+  memcpy(out+o,"manufacturer=DroidVM",20); o+=20;
+  if(add_prod) out[o++]=',';
+ }
+ if(add_prod) {
+  memcpy(out+o,"product-name=",13); o+=13;
+  memcpy(out+o,product,p); o+=p;
+ }
+ out[o]=0;
+ return out;
+}
 static const struct Profile *select_profile(const char *id) {
  for(size_t i=0;i<sizeof(profiles)/sizeof(*profiles);i++) if(same(id,profiles[i].id)) return &profiles[i];
  return NULL;
@@ -182,7 +314,8 @@ int main(int argc,char **argv) {
  }
  if(!p->enabled) fail("profile not enrolled (review manifest blockers)");
  char **out=calloc((size_t)argc*2+8,sizeof(char*)); if(!out) fail("allocation"); out[0]=(char*)p->runtime;
- int n=1,guards=0,gpu=0,blocks=0,initrds=0,sockets=0,services=0,inputs=0,kernels=0,firmwares=0,prealloc=0;
+ int n=1,guards=0,gpu=0,blocks=0,initrds=0,sockets=0,services=0,inputs=0,kernels=0,firmwares=0,prealloc=0,smbios=0;
+ char *gpu_name=NULL;
  if(argc<4||!same(argv[1],"--extended-status")||!same(argv[2],"run")) fail("expected --extended-status run");
  for(int i=1;i<argc;i++) {
   const char *arg=argv[i],*v; int before=i;
@@ -196,6 +329,13 @@ int main(int argc,char **argv) {
     if(strstr(v,"fixed-blob-mapping=true")) out[n++]=(char*)v;
     else { char *x=malloc(strlen(v)+32); if(!x) fail("allocation"); sprintf(x,"%s,fixed-blob-mapping=true",v); out[n++]=x; }
    }
+   continue;
+  }
+  if((v=value(argc,argv,&i,"--smbios"))) {
+   if(smbios++) fail("duplicate SMBIOS");
+   if(!gpu_name) gpu_name=discover_gpu_name();
+   out[n++]="--smbios";
+   out[n++]=smbios_with_product(v,gpu_name);
    continue;
   }
   if((v=value(argc,argv,&i,"--block"))) {
@@ -216,7 +356,7 @@ int main(int argc,char **argv) {
   else if(same(arg,"run")&&i==2) {}
   else {
    const char *flags[]={"--no-balloon","--no-pmu","--no-usb","--no-rng","--no-smt","--disable-sandbox","--hugepages",NULL};
-   const char *options[]={"--name","--mem","--cpus","--hypervisor","--params","--net","--shared-dir","--serial","--smbios","--swiotlb","--prepare-lend-mthp-mode","--gpu-cgroup-path","--virtio-snd",NULL};
+   const char *options[]={"--name","--mem","--cpus","--hypervisor","--params","--net","--shared-dir","--serial","--swiotlb","--prepare-lend-mthp-mode","--gpu-cgroup-path","--virtio-snd",NULL};
    int ok=0;
    for(int j=0;flags[j];j++) if(same(arg,flags[j])) ok=1;
    for(int j=0;options[j];j++) if((v=value(argc,argv,&i,options[j]))) { ok=1; break; }
