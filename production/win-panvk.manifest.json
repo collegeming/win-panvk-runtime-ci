@@ -14,7 +14,7 @@
     {
       "id": "gfxstream-v1",
       "uuid": "d570d1fd-afcf-407d-a82c-fccadc203cf1",
-      "display_name": "Arch Linux · gfxstream",
+      "display_name": "Arch Linux \u00b7 gfxstream",
       "disk": {
         "path": "/storage/emulated/0/DroidVM/VMs/Arch-gfxstream/arch.img",
         "backend_path": "/data/media/0/DroidVM/VMs/Arch-gfxstream/arch.img",
@@ -76,7 +76,7 @@
     {
       "id": "panvk-v1",
       "uuid": "ecb0505e-718b-49a2-b284-de72d735fde1",
-      "display_name": "Arch Linux · PanVK",
+      "display_name": "Arch Linux \u00b7 PanVK",
       "disk": {
         "path": "/storage/emulated/0/DroidVM/VMs/Arch-PanVK/root.qcow2",
         "backend_path": "/data/media/0/DroidVM/VMs/Arch-PanVK/root.qcow2",
@@ -95,7 +95,7 @@
       },
       "runtime": {
         "path": "/data/data/cn.classfun.droidvm/files/runtimes/panvk-v1/bin/crosvm",
-        "sha256": "5ffa5db24cd388211c4cf18b2df02499d68334a43bc317074e92b384a5d19f29"
+        "sha256": "810ffb9a91125f8d9a64dffa078fb87e06eb50015df7573ebb018c0596cadf40"
       },
       "libraries": [
         {
@@ -141,7 +141,7 @@
       },
       "runtime": {
         "path": "/data/data/cn.classfun.droidvm/files/runtimes/panvk-v1/bin/crosvm",
-        "sha256": "5ffa5db24cd388211c4cf18b2df02499d68334a43bc317074e92b384a5d19f29"
+        "sha256": "810ffb9a91125f8d9a64dffa078fb87e06eb50015df7573ebb018c0596cadf40"
       },
       "libraries": [
         {
