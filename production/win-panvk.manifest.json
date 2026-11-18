@@ -141,7 +141,7 @@
       },
       "runtime": {
         "path": "/data/data/cn.classfun.droidvm/files/runtimes/win-panvk-diag-v1/bin/crosvm",
-        "sha256": "867f006a8f6cd4c7dea36a7ac01c97fa7d95d4a1f930ffed69ec74516447a1c1"
+        "sha256": "afdb690f58cf6d90714e5617d0c99b802a954b79a720d17ddd061959bbb5149a"
       },
       "libraries": [
         {
