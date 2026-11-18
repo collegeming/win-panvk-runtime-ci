@@ -1,7 +1,7 @@
 """Compile reviewed JSON into constants; never load user-selected paths at runtime."""
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parent
 
@@ -39,13 +39,36 @@ def compile_manifest(data):
         rows.append('{' + ','.join([q(p['id']), q(p['uuid']), q(p['disk']['path']), q(p['disk']['backend_path']), str(p['disk']['dev']), str(p['disk']['ino']), path_or_null('kernel'), path_or_null('initrd'), path_or_null('firmware'), q(socket), q(service), q(p['runtime']['path']), q(p['library_path']), str(int(p['enabled'])), str(len(files)), str(len(paths)), str(len(envs)), str(len(p['environment']))]) + '}')
         files.extend('{' + q(f['path']) + ',' + q(f['sha256']) + '}' for f in paths)
         envs.extend('{' + q(k) + ',' + q(v) + '}' for k, v in p['environment'].items())
+    # Candidate binaries are opt-in diagnostics: same validation discipline as
+    # profile files, but they must live outside every profile runtime tree.
+    by_id = {p['id']: p for p in profiles}
+    runtime_paths = {p['runtime']['path'] for p in profiles}
+    runtime_roots = {str(PurePosixPath(p['runtime']['path']).parent.parent) for p in profiles}
+    candidate_ids = set()
+    candidate_rows = []
+    for c in data.get('candidates', []):
+        assert c['profile'] in by_id
+        assert c['id'] and c['id'] not in candidate_ids
+        candidate_ids.add(c['id'])
+        assert isinstance(c['enabled'], bool)
+        assert re.fullmatch('[0-9a-f]{64}', c['sha256'])
+        assert c['path'].startswith('/') and not any(ch in c['path'] for ch in '\n,')
+        assert '..' not in c['path'].split('/')
+        assert c['path'] not in runtime_paths
+        path = PurePosixPath(c['path'])
+        own_root = PurePosixPath(by_id[c['profile']]['runtime']['path']).parent.parent
+        assert path != own_root and own_root not in path.parents
+        assert all(PurePosixPath(root) not in path.parents for root in runtime_roots)
+        candidate_rows.append('{' + ','.join([q(c['profile']), q(c['id']), q(c['path']), q(c['sha256']), str(int(c['enabled']))]) + '}')
     return ('static const struct Profile profiles[] = {' + ',\n'.join(rows) + '};\n'
             + 'static const struct FileHash files[] = {' + ',\n'.join(files) + '};\n'
             + 'static const struct Env envs[] = {' + ',\n'.join(envs) + '};\n'
             + '#define GUARD ' + q(data['guard']) + '\n'
             + '#define STOCK ' + q(data['stock']['path']) + '\n'
             + '#define STOCK_HASH ' + q(data['stock']['sha256']) + '\n'
-            + '#define PROBE_NONCE ' + q(data.get('test_only_probe_nonce', '')) + '\n')
+            + '#define PROBE_NONCE ' + q(data.get('test_only_probe_nonce', '')) + '\n'
+            + 'static const struct Candidate candidates[] = {' + (',\n'.join(candidate_rows) if candidate_rows else '{0,0,0,0,0}') + '};\n'
+            + '#define CANDIDATE_COUNT ' + str(len(candidate_rows)) + '\n')
 
 if __name__ == '__main__':
     import argparse

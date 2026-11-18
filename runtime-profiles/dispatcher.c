@@ -20,6 +20,7 @@ struct Profile { const char *id,*uuid,*disk,*backend_disk; unsigned long long de
  int enabled,file_start,file_count,env_start,env_count; };
 struct FileHash { const char *path,*sha; };
 struct Env { const char *key,*value; };
+struct Candidate { const char *profile,*id,*path,*sha; int enabled; };
 #include "manifest.inc"
 static void fail(const char *s) { fprintf(stderr,"profile refused: %s\n",s); exit(78); }
 static int same(const char *a,const char *b) { return a && b && strcmp(a,b)==0; }
@@ -253,6 +254,12 @@ static const struct Profile *select_profile(const char *id) {
  for(size_t i=0;i<sizeof(profiles)/sizeof(*profiles);i++) if(same(id,profiles[i].id)) return &profiles[i];
  return NULL;
 }
+// A candidate only ever replaces the exec target for its own enrolled profile.
+static const struct Candidate *find_candidate(const struct Profile *p,const char *id) {
+ for(int i=0;i<CANDIDATE_COUNT;i++)
+  if(same(p->id,candidates[i].profile)&&same(id,candidates[i].id)) return &candidates[i];
+ return NULL;
+}
 // Parse balanced comma lists; the daemon's displays=[[...]] contains commas.
 // PanVK only changes GPU keys. Everything outside that one argv value is untouched.
 static char *panvk_gpu(const char *source) {
@@ -304,16 +311,28 @@ static int managed_reference(int argc,char **argv) {
 }
 int main(int argc,char **argv) {
  const char *id=getenv("DROIDVM_RUNTIME_PROFILE");
+ const char *candidate_id=getenv("DROIDVM_RUNTIME_CANDIDATE");
  const struct Profile *p=select_profile(id);
  if(id&&!p) fail("unknown profile (no stock fallback)");
  if(!p) {
+  if(candidate_id&&*candidate_id) fail("runtime candidate requires selected profile");
   for(int i=1;i<argc;i++) if(strstr(argv[i],"--droidvm-profile-guard")) fail("profile environment missing");
   if(managed_reference(argc,argv)) fail("managed identity without profile");
   if(!regular(STOCK)||!hash_ok(STOCK,STOCK_HASH)) fail("stock hash mismatch");
   argv[0]=(char*)STOCK; execv(STOCK,argv); fail("stock exec failed");
  }
  if(!p->enabled) fail("profile not enrolled (review manifest blockers)");
- char **out=calloc((size_t)argc*2+8,sizeof(char*)); if(!out) fail("allocation"); out[0]=(char*)p->runtime;
+ const char *runtime=p->runtime;
+ if(candidate_id&&*candidate_id) {
+  const struct Candidate *c=find_candidate(p,candidate_id); char why[256];
+  if(!c) { snprintf(why,sizeof(why),"runtime candidate not enrolled for this profile: %s",candidate_id); fail(why); }
+  if(!c->enabled) { snprintf(why,sizeof(why),"runtime candidate disabled: %s",candidate_id); fail(why); }
+  if(!regular(c->path)) { snprintf(why,sizeof(why),"runtime candidate missing/not regular: %s",candidate_id); fail(why); }
+  if(!hash_ok(c->path,c->sha)) { snprintf(why,sizeof(why),"runtime candidate hash mismatch: %s",candidate_id); fail(why); }
+  runtime=c->path;
+  unsetenv("DROIDVM_RUNTIME_CANDIDATE");
+ }
+ char **out=calloc((size_t)argc*2+8,sizeof(char*)); if(!out) fail("allocation"); out[0]=(char*)runtime;
  int n=1,guards=0,gpu=0,blocks=0,initrds=0,sockets=0,services=0,inputs=0,kernels=0,firmwares=0,prealloc=0,smbios=0;
  char *gpu_name=NULL;
  if(argc<4||!same(argv[1],"--extended-status")||!same(argv[2],"run")) fail("expected --extended-status run");
@@ -396,5 +415,5 @@ int main(int argc,char **argv) {
  for(int k=p->env_start;k<p->env_start+p->env_count;k++) if(setenv(envs[k].key,envs[k].value,1)) fail("environment");
  // execv preserves inherited serial fds, all unchanged argv and extended exit statuses.
  // /proc/self/exe is now the selected real crosvm, including AAudio `device snd` re-exec.
- execv(p->runtime,out); fail("runtime exec failed"); return 78;
+ execv(runtime,out); fail("runtime exec failed"); return 78;
 }
