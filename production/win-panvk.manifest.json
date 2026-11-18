@@ -10,15 +10,6 @@
     "path": "/data/data/cn.classfun.droidvm/usr/bin/crosvm.orig.bak-stock-579d1a5b",
     "sha256": "cd3693ba876720f7ab7c08e5d6358101336f3bbcdb3d7d4f324ac29274bf6a7b"
   },
-  "candidates": [
-    {
-      "profile": "win-panvk-v1",
-      "id": "win-panvk-diag-v1",
-      "path": "/data/data/cn.classfun.droidvm/files/runtimes/win-panvk-diag-v1/bin/crosvm",
-      "sha256": "810ffb9a91125f8d9a64dffa078fb87e06eb50015df7573ebb018c0596cadf40",
-      "enabled": true
-    }
-  ],
   "profiles": [
     {
       "id": "gfxstream-v1",
@@ -149,7 +140,7 @@
         "sha256": "671edd1de0efc004ea134386a2eff6391c8ccd40f06b10d428ed5a7de1a43313"
       },
       "runtime": {
-        "path": "/data/data/cn.classfun.droidvm/files/runtimes/panvk-v1/bin/crosvm",
+        "path": "/data/data/cn.classfun.droidvm/files/runtimes/win-panvk-diag-v1/bin/crosvm",
         "sha256": "810ffb9a91125f8d9a64dffa078fb87e06eb50015df7573ebb018c0596cadf40"
       },
       "libraries": [

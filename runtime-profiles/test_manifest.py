@@ -12,7 +12,7 @@ HERE = Path(__file__).resolve().parent
 BASE = json.loads((HERE.parent / 'production' / 'win-panvk.manifest.json').read_text(encoding='utf-8'))
 BASE.pop('candidates', None)  # tests are independent of enrolled diagnostic entries
 SHA = 'a' * 64
-DIAG = '/data/data/cn.classfun.droidvm/files/runtimes/win-panvk-diag-v1/bin/crosvm'
+DIAG = '/data/data/cn.classfun.droidvm/files/runtimes/win-panvk-diag-test-v1/bin/crosvm'
 
 
 def candidate(**overrides):
