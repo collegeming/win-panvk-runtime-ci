@@ -53,6 +53,7 @@ def main():
     refused(candidate(sha256='A' * 64))
     refused(candidate(sha256='abc'))
     refused(candidate(path='runtimes/win-panvk-diag-v1/bin/crosvm'))
+    refused(candidate(path='//data/data/cn.classfun.droidvm/files/runtimes/panvk-v1/bin/crosvm'))
     refused(candidate(path='/data/data/cn.classfun.droidvm/files/runtimes/win-panvk-diag-v1/bin/../crosvm'))
     refused(candidate(path='/data/data/cn.classfun.droidvm/files/runtimes/panvk-v1/bin/crosvm'))
     refused(candidate(path='/data/data/cn.classfun.droidvm/files/runtimes/panvk-v1/lib/crosvm'))

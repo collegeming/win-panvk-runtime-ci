@@ -53,6 +53,7 @@ def compile_manifest(data):
         assert isinstance(c['enabled'], bool)
         assert re.fullmatch('[0-9a-f]{64}', c['sha256'])
         assert c['path'].startswith('/') and not any(ch in c['path'] for ch in '\n,')
+        assert not c['path'].startswith('//')  # POSIX keeps "//" as a distinct root
         assert '..' not in c['path'].split('/')
         assert c['path'] not in runtime_paths
         path = PurePosixPath(c['path'])

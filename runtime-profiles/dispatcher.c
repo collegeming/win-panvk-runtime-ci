@@ -408,7 +408,7 @@ int main(int argc,char **argv) {
  out[n]=NULL;
  if(setenv("LD_LIBRARY_PATH",p->libpath,1)) fail("library environment");
  // Never carry the other renderer's ambient tuning into this profile.
- const char *clear[]={"CROSVM_DISPLAY_VULKAN_LIBRARY","CROSVM_ENABLE_VULKANO_GRALLOC","GFXSTREAM_DEVICE_LOCAL_MEMORY_TYPE",NULL};
+ const char *clear[]={"CROSVM_DISPLAY_VULKAN_LIBRARY","CROSVM_ENABLE_VULKANO_GRALLOC","GFXSTREAM_DEVICE_LOCAL_MEMORY_TYPE","DROIDVM_RUNTIME_CANDIDATE",NULL};
  for(int k=0;clear[k];k++) unsetenv(clear[k]);
  // Clear every reviewed renderer key first, then set only this profile's values.
  for(size_t k=0;k<sizeof(envs)/sizeof(*envs);k++) unsetenv(envs[k].key);

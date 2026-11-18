@@ -2,7 +2,7 @@ name: Build win-panvk dispatcher candidate
 on:
   workflow_dispatch:
   push:
-    branches: [feat/win-panvk-profile]
+    branches: [feat/win-panvk-profile, feat/crosvm-arena-identity]
     paths:
       - 'production/win-panvk.manifest.json'
       - 'runtime-profiles/dispatcher.c'
@@ -41,6 +41,28 @@ jobs:
           "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang" \
             -std=c11 -O2 -Wall -Wextra -Werror -fPIE -pie -Wl,-z,relro,-z,now \
             -I out runtime-profiles/dispatcher.c -o out/crosvm-profile-dispatcher
+          # Compile-check the candidates[] layout with a throwaway manifest; not shipped.
+          mkdir -p out/candidate-check
+          python3 -I - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('production/win-panvk.manifest.json').read_text(encoding='utf-8'))
+          data['candidates'] = [{
+              'profile': 'win-panvk-v1',
+              'id': 'ci-compile-check-v1',
+              'path': '/data/data/cn.classfun.droidvm/files/runtimes/ci-compile-check-v1/bin/crosvm',
+              'sha256': '0' * 64,
+              'enabled': True,
+          }]
+          Path('out/candidate-check/manifest.json').write_text(json.dumps(data), encoding='utf-8')
+          PY
+          python3 -I runtime-profiles/build_manifest.py --manifest out/candidate-check/manifest.json --output out/candidate-check/manifest.inc
+          grep -q '#define CANDIDATE_COUNT 1' out/candidate-check/manifest.inc
+          "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang" \
+            -std=c11 -O2 -Wall -Wextra -Werror -fPIE -pie -Wl,-z,relro,-z,now \
+            -I out/candidate-check runtime-profiles/dispatcher.c -o out/candidate-check/crosvm-profile-dispatcher
+          echo "candidate compile-check: OK"
+          rm -rf out/candidate-check
           sha256sum out/crosvm-profile-dispatcher production/win-panvk.manifest.json out/manifest.inc > out/SHA256SUMS
           {
             echo "NOT_DEVICE_TESTED"
