@@ -52,8 +52,7 @@ static int hash_ok(const char *path,const char *expected) {
  close(fds[0]); int status=0;
  while(waitpid(pid,&status,0)<0) if(errno!=EINTR) return 0;
  int hash_ok_result = n==64 && WIFEXITED(status) && WEXITSTATUS(status)==0 && same(out,expected);
- if(!hash_ok_result) fprintf(stderr,"hash_dbg path=%s n=%zu status=%x out=%.64s expected=%s errno=%d
-",path,n,(unsigned)status,out,expected,errno);
+ if(!hash_ok_result) fprintf(stderr,"hash_dbg path=%s n=%zu status=%x out=%.64s expected=%s errno=%d\n",path,n,(unsigned)status,out,expected,errno);
  return hash_ok_result;
 }
 static int regular(const char *path) { struct stat s; return lstat(path,&s)==0 && S_ISREG(s.st_mode); }
