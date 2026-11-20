@@ -51,9 +51,7 @@ static int hash_ok(const char *path,const char *expected) {
  char discard[512]; while(read(fds[0],discard,sizeof(discard))>0) {}
  close(fds[0]); int status=0;
  while(waitpid(pid,&status,0)<0) if(errno!=EINTR) return 0;
- int hash_ok_result = n==64 && WIFEXITED(status) && WEXITSTATUS(status)==0 && same(out,expected);
- if(!hash_ok_result) fprintf(stderr,"hash_dbg path=%s n=%zu status=%x out=%.64s expected=%s errno=%d\n",path,n,(unsigned)status,out,expected,errno);
- return hash_ok_result;
+ return n==64 && WIFEXITED(status) && WEXITSTATUS(status)==0 && same(out,expected);
 }
 static int regular(const char *path) { struct stat s; return lstat(path,&s)==0 && S_ISREG(s.st_mode); }
 static void verify_files(const struct Profile *p) {
